@@ -134,7 +134,7 @@ export const logout= async (req,res)=>{
 
 
 //we'll create user verfication controller function so that user can verify the email id n hence account
-export const sendVerifyOtp = asyn (req,res)=>{
+export const sendVerifyOtp = async (req,res)=>{
     try {
         const {userid} = req.body; //getting userId from req body
         const user = await userModel.findById(userId); //we'll get the user
@@ -148,7 +148,7 @@ export const sendVerifyOtp = asyn (req,res)=>{
         const otp = String(math.floor(100000 + Math.random() * 900000));
         user.verifyOtp = otp;
         //now set the expiry time for otp
-        user.verifyOtpExpireAt = Date.now() 24 * 60 * 60 * 1000;//expiry date will be 24 hrs
+        user.verifyOtpExpireAt = Date.now()+ 24 * 60 * 60 * 1000;//expiry date will be 24 hrs
 
         //now save user in database
         await user.save();
@@ -175,7 +175,7 @@ export const sendVerifyOtp = asyn (req,res)=>{
         
     }
 }
-
+//verify email using otp
 export const verifyEmail = async (req,res)=>{
     const {userId,otp} = req.body;
 
@@ -214,3 +214,103 @@ export const verifyEmail = async (req,res)=>{
 
 //using these 2 controller function we have to create the api endpoints
 //we need a middleware to get the cookie and from that we will get a token and from that token it will find the userId that we need in these controller function ..that user id will be added in the request body thta will be done usnig a function for that we will create a middleware
+
+
+
+//create controller function isAuthenticated
+export const isAuthenticated = async (req,res)=>{
+    try {
+        return res.json({success: true}); 
+        
+    } catch (error) {
+        return res.json({success: false, message : error.message});
+    }
+
+}
+//lets create api endpoints for this also open authroutes,js and add "authRouter.post('/is-auth',userAuth , isAuthenticated);"
+
+//send password reset otp
+export const sendResetOtp = async (req,res)=>{
+    const {email} = req.body;
+
+    if(!email){  
+         return res.json({success: false, message : 'Email is required'});
+
+    }
+     //if email is avail we will add try catch
+    try {
+
+        const user = await userModel.findOne({email});
+        if(!user){
+         return res.json({success: false, message : 'User not found'});
+
+        }  
+        //user is avail, we'll generate an otp on email
+        const otp = String(math.floor(100000 + Math.random() * 900000));
+        user.resetOtp = otp;
+        //now set the expiry time for otp
+        user.resetOtpExpireAt = Date.now()+ 15 * 60 * 60 * 1000;
+        //now save user in database
+        await user.save();
+
+        //after updating the user data we will send the email
+        const mailOptions = {
+            from: process.env.SENDER_EMAIL,
+            to: user.email,
+            subject:'Password Reset OTP',
+            text: `Your OTP for resetting your password is ${otp}. Use this password to proceed with the resetting your password`
+
+        }
+        await transporter.sendMail(mailOptions);
+
+        return res.json({success: true, message : 'OTP send to your email'});
+        
+
+
+    } catch (error) {
+         return res.json({success: false, message : error.message});
+        
+    }
+
+}
+
+//Reset User Password
+export const resetPassword = async (req,res)=>{
+    const {email,otp,newPassword} = req.body;
+
+    if(!email || !otp || !newPassword){
+         return res.json({success: false, message : 'Email, OTP ,and new password are password are required'});
+
+    }
+    try {
+        const user = await userModel.findOne({email});
+        if(!user){
+         return res.json({success: false, message : 'User not found'});
+        }
+        //user is avail
+        if(user.resetOtp === "" || user.resetOtp != otp){
+         return res.json({success: false, message : 'Invalid OTP'});
+
+        }
+        
+        if(user.resetOtpExpireAt < Date.now()){
+         return res.json({success: false, message : 'OTP Expired'});
+
+        }
+        //otp not expired
+        //update the users password
+        //user has send the new password first we have to encrypt the new password to store in the database
+        const hashedPassword = await bcrypt.hash(newPassword, 10);//hashed password for the new password
+        user.password = hashedPassword;//update p in user database
+        user.resetOtp = '';//reset the otp
+        user.resetOtpExpireAt =0 ;
+
+        await user.save();
+        return res.json({success: true, message : 'Password has been reset successfully '});
+
+    } catch (error) {
+         return res.json({success: false, message : error.message});
+        
+    }
+}
+//using this controler function we will create the api endpoints open auth routes .js 
